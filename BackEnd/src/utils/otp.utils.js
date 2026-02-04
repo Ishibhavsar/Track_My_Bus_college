@@ -6,7 +6,14 @@ const generateOTP = () => {
 
 const sendOTPViaSMS = async (phone, otp) => {
   try {
-    // In production, integrate with SMS service like Twilio
+    // Using Twilio (configure in .env)
+    const twilio = require('twilio');
+    const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+    await client.messages.create({
+      body: `Your OTP is: ${otp}. Valid for 10 minutes.`,
+      from: process.env.TWILIO_PHONE,
+      to: `+91${phone}`,
+    });
     // For development, just log the OTP
     console.log(`✅ SMS sent to ${phone}: ${otp}`);
   } catch (error) {
