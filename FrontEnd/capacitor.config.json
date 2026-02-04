@@ -1,0 +1,12 @@
+{
+  "appId": "com.trackmybus.app",
+  "appName": "TrackMyBus",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
