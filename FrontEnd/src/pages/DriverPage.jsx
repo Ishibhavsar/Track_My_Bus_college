@@ -314,24 +314,49 @@ const DriverPage = () => {
                                 </div>
 
                                 {routeStops.length > 0 && (
-                                    <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-                                        <h3 className="font-bold text-lg text-gray-900 mb-4">Route Stops</h3>
-                                        <div className="space-y-3">
-                                            {routeStops.map((stop, index) => (
-                                                <div key={index} className="flex items-center gap-3">
-                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${index === 0 ? 'bg-green-100 text-green-700' :
-                                                        index === routeStops.length - 1 ? 'bg-red-100 text-red-700' :
-                                                            'bg-blue-100 text-blue-700'
-                                                        }`}>
-                                                        {index + 1}
-                                                    </div>
-                                                    <div className="flex-1">
-                                                        <p className="font-medium text-gray-900">{stop.name}</p>
-                                                        {index === 0 && <span className="text-xs text-green-600">Starting Point</span>}
-                                                        {index === routeStops.length - 1 && <span className="text-xs text-red-600">Final Destination</span>}
-                                                    </div>
-                                                </div>
-                                            ))}
+                                    <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                                        <div className="flex items-center justify-between mb-6">
+                                            <h3 className="font-bold text-lg text-gray-900">Your Route Progress</h3>
+                                            <span className="text-xs font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded-full uppercase tracking-wider">
+                                                {routeStops.length} Stops
+                                            </span>
+                                        </div>
+
+                                        <div className="relative pl-8">
+                                            {/* Vertical Line */}
+                                            <div className="absolute left-[7.5px] top-4 bottom-4 w-0.5 bg-gray-100"></div>
+
+                                            <div className="space-y-8">
+                                                {routeStops.map((stop, index) => {
+                                                    const isFirst = index === 0;
+                                                    const isLast = index === routeStops.length - 1;
+
+                                                    // Simple heuristic: current stop is based on order since we don't have waypoint comparison here yet
+                                                    // but we can at least show it beautifully
+                                                    return (
+                                                        <div key={index} className="relative">
+                                                            {/* Marker Circle */}
+                                                            <div className={`absolute -left-[31px] top-1.5 w-4 h-4 rounded-full border-4 border-white z-10 shadow-sm ${isFirst ? 'bg-green-500 ring-4 ring-green-100' :
+                                                                    isLast ? 'bg-red-500 ring-4 ring-red-100' :
+                                                                        'bg-blue-500 ring-4 ring-blue-100'
+                                                                }`}></div>
+
+                                                            <div className="flex justify-between items-start">
+                                                                <div>
+                                                                    <p className={`font-bold text-gray-900 ${isFirst || isLast ? 'text-lg' : 'text-md'}`}>
+                                                                        {stop.name}
+                                                                    </p>
+                                                                    {isFirst && <span className="text-xs font-bold text-green-600 uppercase tracking-tighter">Starting Point</span>}
+                                                                    {isLast && <span className="text-xs font-bold text-red-600 uppercase tracking-tighter">Final Destination</span>}
+                                                                </div>
+                                                                <div className="text-right">
+                                                                    <span className="text-xs font-bold text-gray-400">Stop #{index + 1}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
                                     </div>
                                 )}

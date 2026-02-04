@@ -1,15 +1,65 @@
 import React, { useMemo } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import '../../styles/BusTrackingView.css';
+
+// Fix for default marker icons in Leaflet
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+import markerRetina from 'leaflet/dist/images/marker-icon-2x.png';
+
+let DefaultIcon = L.icon({
+    iconUrl: markerIcon,
+    shadowUrl: markerShadow,
+    iconRetinaUrl: markerRetina,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    tooltipAnchor: [16, -28],
+    shadowSize: [41, 41]
+});
+
+L.Marker.prototype.options.icon = DefaultIcon;
+
+// Custom icons
+const busIcon = new L.Icon({
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/3448/3448339.png',
+    iconSize: [38, 38],
+    iconAnchor: [19, 38],
+    popupAnchor: [0, -38],
+});
+
+const studentIcon = new L.Icon({
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/1995/1995531.png', // Or a blue dot
+    iconSize: [32, 32],
+    iconAnchor: [16, 32],
+    popupAnchor: [0, -32],
+});
+
+// Component to recenter map when positions change
+const RecenterMap = ({ positions }) => {
+    const map = useMap();
+    React.useEffect(() => {
+        if (positions.length > 0) {
+            const bounds = L.latLngBounds(positions);
+            map.fitBounds(bounds, { padding: [50, 50] });
+        }
+    }, [positions, map]);
+    return null;
+};
 
 const BusTrackingView = ({
     bus,
     busLocation,
+    studentLocation,
     lastUpdated,
     isLoading,
     onBack
 }) => {
     // Calculate distance between two coordinates in kilometers
     const calculateDistance = (lat1, lng1, lat2, lng2) => {
+        if (!lat1 || !lng1 || !lat2 || !lng2) return 0;
         const R = 6371; // Earth's radius in km
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLng = (lng2 - lng1) * Math.PI / 180;
@@ -29,22 +79,23 @@ const BusTrackingView = ({
         return timeMinutes;
     };
 
+    // Calculate distance to student
+    const distanceToStudent = useMemo(() => {
+        if (busLocation && studentLocation) {
+            return calculateDistance(
+                busLocation.lat, busLocation.lng,
+                studentLocation.lat, studentLocation.lng
+            );
+        }
+        return null;
+    }, [busLocation, studentLocation]);
+
     // Generate stops with real-time status based on bus location
     const stops = useMemo(() => {
         if (!bus?.route) return [];
 
-        // Parse route details - support multiple arrow formats
-        const routeDetails = bus.route.routeDetails || '';
-        // Support both → and -> arrow formats
-        const stopNames = routeDetails
-            .split(/→|->|➔|➜/)
-            .map(s => s.trim())
-            .filter(Boolean);
-
-        // Check if we have waypoints with coordinates
         const hasWaypoints = bus.route.waypoints && bus.route.waypoints.length > 0;
 
-        // If we have waypoints with coordinates and bus location, use real-time tracking
         if (hasWaypoints && busLocation) {
             const sortedWaypoints = [...bus.route.waypoints].sort((a, b) => (a.order || 0) - (b.order || 0));
 
@@ -65,7 +116,6 @@ const BusTrackingView = ({
                 }
             });
 
-            // Calculate cumulative distance for each stop from current position
             const now = new Date();
 
             return sortedWaypoints.map((wp, index) => {
@@ -73,15 +123,18 @@ const BusTrackingView = ({
                 let etaMinutes = 0;
                 let cumulativeDistance = 0;
 
-                // Determine status based on position relative to nearest stop
+                // Mark as green if passed or current
                 if (index < nearestStopIndex) {
                     status = 'passed';
                 } else if (index === nearestStopIndex) {
-                    status = 'current';
+                    // If we are within 200m of the stop, consider it "current"
+                    if (minDistance < 0.2) {
+                        status = 'current';
+                    } else {
+                        status = 'upcoming';
+                    }
                 } else {
                     status = 'upcoming';
-
-                    // Calculate distance from current position to this stop
                     for (let i = nearestStopIndex; i < index; i++) {
                         const fromWp = sortedWaypoints[i];
                         const toWp = sortedWaypoints[i + 1];
@@ -95,7 +148,6 @@ const BusTrackingView = ({
                     etaMinutes = calculateETA(cumulativeDistance);
                 }
 
-                // Calculate ETA time
                 const etaTime = new Date(now.getTime() + etaMinutes * 60 * 1000);
                 const timeString = etaTime.toLocaleTimeString('en-US', {
                     hour: '2-digit',
@@ -105,7 +157,7 @@ const BusTrackingView = ({
 
                 return {
                     name: wp.name || `Stop ${index + 1}`,
-                    time: status === 'passed' ? '--:--' : timeString,
+                    time: status === 'passed' ? 'Reached' : timeString,
                     status,
                     isStart: index === 0,
                     isEnd: index === sortedWaypoints.length - 1,
@@ -115,44 +167,33 @@ const BusTrackingView = ({
             });
         }
 
-        // Fallback: Use route details with estimated times
+        // Fallback for routes without waypoints
+        const routeDetails = bus.route.routeDetails || '';
+        const stopNames = routeDetails.split(/→|->|➔|➜/).map(s => s.trim()).filter(Boolean);
+
         if (stopNames.length === 0) return [];
 
-        // For routes without waypoint coordinates, estimate based on departure time
         const now = new Date();
         const departureTime = bus?.departureTime || '08:00';
         const [hours, minutes] = departureTime.split(':').map(Number);
-
         const baseTime = new Date();
         baseTime.setHours(hours || 8, minutes || 0, 0, 0);
 
-        const minutesPerStop = 7; // Average 7 minutes between stops
-
-        // Calculate elapsed time since departure
+        const minutesPerStop = 7;
         const elapsedMinutes = (now - baseTime) / (1000 * 60);
-        const currentStopIndex = busLocation
-            ? Math.max(0, Math.min(stopNames.length - 1, Math.floor(elapsedMinutes / minutesPerStop)))
-            : 0;
+        const currentStopIndex = busLocation ? Math.max(0, Math.min(stopNames.length - 1, Math.floor(elapsedMinutes / minutesPerStop))) : 0;
 
         return stopNames.map((name, index) => {
             const stopTime = new Date(baseTime.getTime() + (index * minutesPerStop * 60 * 1000));
-
             let status = 'upcoming';
             if (busLocation) {
-                if (index < currentStopIndex) {
-                    status = 'passed';
-                } else if (index === currentStopIndex) {
-                    status = 'current';
-                }
+                if (index < currentStopIndex) status = 'passed';
+                else if (index === currentStopIndex) status = 'current';
             }
 
             return {
                 name,
-                time: stopTime.toLocaleTimeString('en-US', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false
-                }),
+                time: status === 'passed' ? 'Reached' : stopTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
                 status,
                 isStart: index === 0,
                 isEnd: index === stopNames.length - 1
@@ -160,130 +201,11 @@ const BusTrackingView = ({
         });
     }, [bus, busLocation]);
 
-    // Get ETA for last stop
-    const lastStop = stops[stops.length - 1];
-    const etaTime = lastStop?.time || '--:--';
+    const lastStopReached = stops.filter(s => s.status === 'passed').slice(-1)[0];
+    const nextStop = stops.find(s => s.status === 'upcoming' || s.status === 'current');
 
-    // Calculate if bus is on time
-    const getStatusBadge = () => {
-        if (!busLocation) return { text: 'Waiting', className: '' };
-        return { text: 'On time', className: '' };
-    };
-
-    const statusBadge = getStatusBadge();
-
-    // Generate map URL with bus marker
-    const getMapUrl = (lat, lng) => {
-        return `https://www.openstreetmap.org/export/embed.html?bbox=${lng - 0.015},${lat - 0.01},${lng + 0.015},${lat + 0.01}&layer=mapnik&marker=${lat},${lng}`;
-    };
-
-    // Call driver
     const handleCallDriver = () => {
-        if (bus?.driver?.phone) {
-            window.location.href = `tel:${bus.driver.phone}`;
-        }
-    };
-
-    // Open location in Google Maps
-    const openInMaps = () => {
-        if (busLocation) {
-            window.open(`https://www.google.com/maps?q=${busLocation.lat},${busLocation.lng}&z=15`, '_blank');
-        }
-    };
-
-    // Inline styles for timeline to avoid CSS conflicts
-    const timelineStyles = {
-        container: {
-            position: 'relative',
-            paddingLeft: '30px'
-        },
-        stop: {
-            position: 'relative',
-            paddingBottom: '24px',
-            paddingLeft: '20px'
-        },
-        stopLast: {
-            paddingBottom: '0'
-        },
-        line: {
-            position: 'absolute',
-            left: '6px',
-            top: '24px',
-            bottom: '0',
-            width: '3px',
-            backgroundColor: '#e5e7eb',
-            borderRadius: '2px'
-        },
-        linePassed: {
-            background: 'linear-gradient(to bottom, #f97316, #fb923c)'
-        },
-        lineCurrent: {
-            background: 'linear-gradient(to bottom, #f97316 50%, #e5e7eb 50%)'
-        },
-        circle: {
-            position: 'absolute',
-            left: '0',
-            top: '4px',
-            width: '16px',
-            height: '16px',
-            borderRadius: '50%',
-            backgroundColor: 'white',
-            border: '3px solid #e5e7eb',
-            zIndex: 2
-        },
-        circlePassed: {
-            backgroundColor: '#f97316',
-            borderColor: '#f97316'
-        },
-        circleCurrent: {
-            backgroundColor: '#22c55e',
-            borderColor: '#22c55e',
-            animation: 'pulse-green 2s infinite'
-        },
-        content: {
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start'
-        },
-        stopName: {
-            fontSize: '15px',
-            fontWeight: '500',
-            color: '#1a1a1a',
-            marginBottom: '4px'
-        },
-        stopNamePassed: {
-            color: '#9ca3af'
-        },
-        stopTime: {
-            fontSize: '14px',
-            fontWeight: '600',
-            color: '#1a1a1a',
-            minWidth: '50px',
-            textAlign: 'right'
-        },
-        stopTimePassed: {
-            color: '#9ca3af'
-        },
-        badge: {
-            display: 'inline-block',
-            fontSize: '11px',
-            padding: '3px 10px',
-            borderRadius: '12px',
-            fontWeight: '500',
-            marginTop: '4px'
-        },
-        badgeStarting: {
-            backgroundColor: '#fef3c7',
-            color: '#d97706'
-        },
-        badgeCurrent: {
-            backgroundColor: '#d1fae5',
-            color: '#059669'
-        },
-        badgeDestination: {
-            backgroundColor: '#dbeafe',
-            color: '#2563eb'
-        }
+        if (bus?.driver?.phone) window.location.href = `tel:${bus.driver.phone}`;
     };
 
     if (isLoading) {
@@ -298,10 +220,9 @@ const BusTrackingView = ({
                         </div>
                     </div>
                 </div>
-
                 <div className="tracking-loading">
                     <div className="tracking-loading-spinner"></div>
-                    <p>Getting bus location...</p>
+                    <p>Connecting to bus...</p>
                 </div>
             </div>
         );
@@ -319,19 +240,24 @@ const BusTrackingView = ({
                         </div>
                     </div>
                 </div>
-
                 <div className="no-location">
                     <div className="no-location-icon">📍</div>
-                    <h3>Location Unavailable</h3>
-                    <p>The driver hasn't started sharing their location yet</p>
+                    <h3>Bus not sharing location</h3>
+                    <p>Wait for driver to start sharing their location</p>
                 </div>
             </div>
         );
     }
 
+    const mapPositions = [
+        [busLocation.lat, busLocation.lng]
+    ];
+    if (studentLocation) {
+        mapPositions.push([studentLocation.lat, studentLocation.lng]);
+    }
+
     return (
         <div className="bus-tracking-view">
-            {/* Header */}
             <div className="tracking-header">
                 <div className="tracking-header-left">
                     <button className="back-button" onClick={onBack}>←</button>
@@ -340,45 +266,79 @@ const BusTrackingView = ({
                         <p>{bus?.route?.name}</p>
                     </div>
                 </div>
-                {busLocation && (
-                    <div className="live-badge">
-                        <span className="live-dot"></span>
-                        LIVE
+                <div className="live-badge">
+                    <span className="live-dot"></span>
+                    LIVE
+                </div>
+            </div>
+
+            <div className="tracking-map-container">
+                <MapContainer
+                    center={[busLocation.lat, busLocation.lng]}
+                    zoom={15}
+                    style={{ height: '100%', width: '100%' }}
+                    zoomControl={false}
+                >
+                    <TileLayer
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    />
+                    <Marker position={[busLocation.lat, busLocation.lng]} icon={busIcon}>
+                        <Popup>
+                            <strong>Bus: {bus?.busNumber}</strong><br />
+                            Driver: {bus?.driver?.name || 'Assigned'}
+                        </Popup>
+                    </Marker>
+
+                    {studentLocation && (
+                        <>
+                            <Marker position={[studentLocation.lat, studentLocation.lng]} icon={studentIcon}>
+                                <Popup>You are here</Popup>
+                            </Marker>
+                            <Polyline
+                                positions={[
+                                    [busLocation.lat, busLocation.lng],
+                                    [studentLocation.lat, studentLocation.lng]
+                                ]}
+                                color="#3b82f6"
+                                dashArray="5, 10"
+                                weight={2}
+                            />
+                        </>
+                    )}
+                    <RecenterMap positions={mapPositions} />
+                </MapContainer>
+
+                <div className="map-update-badge">
+                    Updated {lastUpdated?.toLocaleTimeString()}
+                </div>
+
+                {distanceToStudent !== null && (
+                    <div className="distance-floating-badge">
+                        {distanceToStudent < 1
+                            ? `${Math.round(distanceToStudent * 1000)}m away from you`
+                            : `${distanceToStudent.toFixed(1)} km away from you`
+                        }
                     </div>
                 )}
             </div>
 
-            {/* Map Section */}
-            <div className="tracking-map-container" onClick={openInMaps} style={{ cursor: 'pointer' }}>
-                <iframe
-                    src={getMapUrl(busLocation.lat, busLocation.lng)}
-                    title="Bus Location Map"
-                    loading="lazy"
-                />
-                {lastUpdated && (
-                    <div className="map-update-badge">
-                        Updated {lastUpdated.toLocaleTimeString()}
-                    </div>
-                )}
-            </div>
-
-            {/* ETA Card */}
             <div className="eta-card">
-                <h3>
-                    Will reach {lastStop?.name || 'Destination'} by {etaTime}
-                </h3>
-                <span className={`eta-badge ${statusBadge.className}`}>{statusBadge.text}</span>
+                <div className="eta-info-main">
+                    <h3>{nextStop ? `Next: ${nextStop.name}` : 'Route Completed'}</h3>
+                    <p className="eta-subtext">
+                        {lastStopReached ? `Passed ${lastStopReached.name}` : 'Started route'}
+                    </p>
+                </div>
+                <span className="eta-badge">On Time</span>
             </div>
 
-            {/* Bus Info Card */}
             <div className="bus-info-card">
                 <div className="bus-info-left">
                     <span className="bus-plate">{bus?.busNumber}</span>
                     <div>
-                        <div className="bus-name">{bus?.route?.name || 'Bus Service'}</div>
-                        <div className="bus-type">
-                            Driver: {bus?.driver?.name || 'N/A'}
-                        </div>
+                        <div className="bus-name">{bus?.driver?.name || 'Driver'}</div>
+                        <div className="bus-type">Contact available</div>
                     </div>
                 </div>
                 {bus?.driver?.phone && (
@@ -386,106 +346,35 @@ const BusTrackingView = ({
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z" />
                         </svg>
-                        Call
                     </button>
                 )}
             </div>
 
-            {/* Timeline Section with inline styles */}
-            <div style={{ flex: 1, overflowY: 'auto', backgroundColor: 'white', padding: '20px' }}>
-                <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '16px', textAlign: 'center' }}>
-                    Route Stops • {stops.filter(s => s.status === 'passed').length}/{stops.length} completed
+            <div className="timeline-section">
+                <div className="timeline-header">
+                    Route Progress • {stops.filter(s => s.status === 'passed').length}/{stops.length} completed
                 </div>
-
-                {stops.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>
-                        No stops information available
-                    </div>
-                ) : (
-                    <div style={timelineStyles.container}>
-                        {stops.map((stop, index) => {
-                            const isLast = index === stops.length - 1;
-
-                            return (
-                                <div
-                                    key={index}
-                                    style={{
-                                        ...timelineStyles.stop,
-                                        ...(isLast ? timelineStyles.stopLast : {})
-                                    }}
-                                >
-                                    {/* Connecting Line */}
-                                    {!isLast && (
-                                        <div style={{
-                                            ...timelineStyles.line,
-                                            ...(stop.status === 'passed' ? timelineStyles.linePassed : {}),
-                                            ...(stop.status === 'current' ? timelineStyles.lineCurrent : {})
-                                        }} />
-                                    )}
-
-                                    {/* Stop Circle */}
-                                    <div style={{
-                                        ...timelineStyles.circle,
-                                        ...(stop.status === 'passed' ? timelineStyles.circlePassed : {}),
-                                        ...(stop.status === 'current' ? timelineStyles.circleCurrent : {})
-                                    }}>
-                                        {stop.status === 'passed' && (
-                                            <span style={{
-                                                position: 'absolute',
-                                                top: '50%',
-                                                left: '50%',
-                                                transform: 'translate(-50%, -50%)',
-                                                color: 'white',
-                                                fontSize: '8px',
-                                                fontWeight: 'bold'
-                                            }}>✓</span>
+                <div className="stops-timeline">
+                    {stops.map((stop, index) => (
+                        <div key={index} className={`timeline-stop ${stop.status}`}>
+                            <div className="stop-circle"></div>
+                            <div className="stop-content">
+                                <div className="stop-info">
+                                    <div className="stop-name">{stop.name}</div>
+                                    <div className="stop-badges-row">
+                                        {stop.isStart && <span className="stop-badge starting">Start</span>}
+                                        {stop.status === 'current' && <span className="stop-badge boarding">Current Location</span>}
+                                        {stop.isEnd && <span className="stop-badge destination">End</span>}
+                                        {stop.etaMinutes > 0 && stop.status === 'upcoming' && (
+                                            <span className="stop-eta-mins">~{stop.etaMinutes} min</span>
                                         )}
                                     </div>
-
-                                    {/* Stop Content */}
-                                    <div style={timelineStyles.content}>
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{
-                                                ...timelineStyles.stopName,
-                                                ...(stop.status === 'passed' ? timelineStyles.stopNamePassed : {})
-                                            }}>
-                                                {stop.name}
-                                            </div>
-
-                                            {stop.isStart && (
-                                                <span style={{ ...timelineStyles.badge, ...timelineStyles.badgeStarting }}>
-                                                    Bus starting point
-                                                </span>
-                                            )}
-                                            {stop.status === 'current' && !stop.isStart && (
-                                                <span style={{ ...timelineStyles.badge, ...timelineStyles.badgeCurrent }}>
-                                                    🚌 Bus is here
-                                                </span>
-                                            )}
-                                            {stop.isEnd && (
-                                                <span style={{ ...timelineStyles.badge, ...timelineStyles.badgeDestination }}>
-                                                    Final Destination
-                                                </span>
-                                            )}
-                                            {stop.etaMinutes > 0 && stop.status === 'upcoming' && (
-                                                <span style={{ display: 'block', fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>
-                                                    ~{stop.etaMinutes} min away
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        <div style={{
-                                            ...timelineStyles.stopTime,
-                                            ...(stop.status === 'passed' ? timelineStyles.stopTimePassed : {})
-                                        }}>
-                                            {stop.time}
-                                        </div>
-                                    </div>
                                 </div>
-                            );
-                        })}
-                    </div>
-                )}
+                                <div className="stop-time">{stop.time}</div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     );

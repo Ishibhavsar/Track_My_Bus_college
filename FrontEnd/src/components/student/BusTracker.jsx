@@ -1,16 +1,66 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import BusTrackingView from './BusTrackingView';
+import { io } from 'socket.io-client';
 
 const BusTracker = ({ buses }) => {
     const [selectedBus, setSelectedBus] = useState(null);
     const [busLocation, setBusLocation] = useState(null);
+    const [studentLocation, setStudentLocation] = useState(null);
     const [lastUpdated, setLastUpdated] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
+    const socketRef = useRef(null);
+
+    useEffect(() => {
+        const socketUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
+        socketRef.current = io(socketUrl);
+
+        socketRef.current.on('connect', () => {
+            console.log('Connected to socket server');
+        });
+
+        socketRef.current.on('location-update', (data) => {
+            if (selectedBus && data.busId === selectedBus._id) {
+                setBusLocation({
+                    lat: data.location.latitude,
+                    lng: data.location.longitude,
+                });
+                setLastUpdated(new Date());
+            }
+        });
+
+        return () => {
+            if (socketRef.current) {
+                socketRef.current.disconnect();
+            }
+        };
+    }, [selectedBus]);
+
+    useEffect(() => {
+        if (!navigator.geolocation) return;
+
+        const watchId = navigator.geolocation.watchPosition(
+            (position) => {
+                setStudentLocation({
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude
+                });
+            },
+            (error) => console.error('Error tracking student location:', error),
+            { enableHighAccuracy: true }
+        );
+
+        return () => navigator.geolocation.clearWatch(watchId);
+    }, []);
 
     useEffect(() => {
         if (!selectedBus) {
             setBusLocation(null);
             return;
+        }
+
+        // Join the room for the specific bus
+        if (socketRef.current) {
+            socketRef.current.emit('join-bus', selectedBus._id);
         }
 
         const fetchLocation = async () => {
@@ -43,7 +93,7 @@ const BusTracker = ({ buses }) => {
                     }
                 }
             } catch (error) {
-                console.error('Error fetching bus location:', error);
+                console.error('Error fetching initial bus location:', error);
                 if (selectedBus.currentLocation) {
                     setBusLocation({
                         lat: selectedBus.currentLocation.latitude || selectedBus.currentLocation.lat,
@@ -55,9 +105,6 @@ const BusTracker = ({ buses }) => {
 
         setIsLoading(true);
         fetchLocation().finally(() => setIsLoading(false));
-
-        const interval = setInterval(fetchLocation, 10000);
-        return () => clearInterval(interval);
     }, [selectedBus]);
 
     const getMapUrl = (lat, lng) => {
@@ -126,6 +173,7 @@ const BusTracker = ({ buses }) => {
                 <BusTrackingView
                     bus={selectedBus}
                     busLocation={busLocation}
+                    studentLocation={studentLocation}
                     lastUpdated={lastUpdated}
                     isLoading={isLoading}
                     onBack={() => setSelectedBus(null)}
