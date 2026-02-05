@@ -171,13 +171,13 @@ const AdminAnalytics = () => {
       </div>
 
       {/* Live Bus Monitor */}
-      <div className="card p-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="card p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-2">
           <div className="flex items-center gap-3">
-            <h3 className="text-lg font-semibold text-gray-900">LIVE BUS MONITOR</h3>
-            <span className="text-xs text-gray-400">(Auto-refreshes every 30s)</span>
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900">LIVE BUS MONITOR</h3>
+            <span className="text-xs text-gray-400 hidden sm:inline">(Auto-refreshes every 30s)</span>
           </div>
-          <div className="flex items-center gap-4 text-sm">
+          <div className="flex items-center gap-4 text-xs sm:text-sm">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
               <span className="text-gray-600">GPS-ONLINE</span>
@@ -206,8 +206,8 @@ const AdminAnalytics = () => {
                 </div>
                 <div className="text-right">
                   <span className={`inline-block px-3 py-1 text-sm font-medium rounded-full ${bus.status === 'ON ROUTE'
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-gray-100 text-gray-600'
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-gray-100 text-gray-600'
                     }`}>
                     {bus.status}
                   </span>

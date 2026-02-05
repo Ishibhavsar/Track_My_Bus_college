@@ -16,13 +16,14 @@ const BusTrackingView = ({
     isLoading,
     onBack
 }) => {
-    const { isLoaded } = useJsApiLoader({
+    const { isLoaded, loadError } = useJsApiLoader({
         id: 'google-map-script',
-        googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+        googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
     });
 
     const [map, setMap] = useState(null);
     const [selectedMarker, setSelectedMarker] = useState(null);
+    const [mapError, setMapError] = useState(null);
 
     // Calculate distance between two coordinates in kilometers
     const calculateDistance = (lat1, lng1, lat2, lng2) => {
@@ -229,6 +230,66 @@ const BusTrackingView = ({
     const onUnmount = useCallback(function callback(map) {
         setMap(null);
     }, []);
+
+    // Error handling for Google Maps load failure
+    if (loadError) {
+        console.error('Google Maps failed to load:', loadError);
+        return (
+            <div className="bus-tracking-view">
+                <div className="tracking-header">
+                    <div className="tracking-header-left">
+                        <button className="back-button" onClick={onBack} title="Go back">←</button>
+                        <div className="tracking-header-info">
+                            <h2>{bus?.busNumber || 'Bus'}</h2>
+                            <p>{bus?.route?.name || ''}</p>
+                        </div>
+                    </div>
+                </div>
+                <div className="tracking-loading" style={{ flexDirection: 'column', gap: '16px' }}>
+                    <span style={{ fontSize: '48px' }}>🗺️</span>
+                    <h3 style={{ margin: 0, color: '#374151' }}>Map Unavailable</h3>
+                    <p style={{ margin: 0, color: '#6b7280', textAlign: 'center', padding: '0 20px' }}>
+                        Unable to load Google Maps. Please check your internet connection.
+                    </p>
+                    <button
+                        onClick={() => window.location.reload()}
+                        style={{
+                            marginTop: '8px',
+                            padding: '12px 24px',
+                            backgroundColor: '#3b82f6',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '12px',
+                            fontSize: '14px',
+                            fontWeight: '600',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        Retry
+                    </button>
+                </div>
+                {/* Show route info even without map */}
+                <div className="timeline-section">
+                    <div className="timeline-header">
+                        Route Information • {stops.length} stops
+                    </div>
+                    <div className="stops-timeline">
+                        {stops.map((stop, index) => (
+                            <div key={index} className={`timeline-stop ${stop.status}`}>
+                                <div className="stop-circle"></div>
+                                <div className="stop-content">
+                                    <div className="stop-info">
+                                        <div className="stop-name">{stop.name}</div>
+                                    </div>
+                                    <div className="stop-time">{stop.time}</div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     if (isLoading || !isLoaded) {
         return (

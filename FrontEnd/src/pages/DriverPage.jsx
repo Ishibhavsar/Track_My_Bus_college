@@ -43,12 +43,8 @@ const DriverPage = () => {
         };
     }, [isSharing, assignedBus]);
 
-    // Send location to server when it updates
-    useEffect(() => {
-        if (isSharing && currentLocation && assignedBus) {
-            sendLocationToServer();
-        }
-    }, [currentLocation]);
+    // NOTE: Location is now sent ONLY via the 10-second interval in startLocationTracking()
+    // We no longer send on every GPS position change to avoid excessive server calls
 
     const startLocationTracking = async () => {
         try {

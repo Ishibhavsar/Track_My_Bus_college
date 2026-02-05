@@ -27,34 +27,33 @@ const AdminPage = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <nav className="bg-purple-600 text-white">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className="px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-xl font-bold">Super Admin Dashboard</h1>
-              <p className="text-purple-200 text-sm">System Control Panel</p>
+              <h1 className="text-lg sm:text-xl font-bold">Super Admin Dashboard</h1>
+              <p className="text-purple-200 text-xs sm:text-sm">System Control Panel</p>
             </div>
             <button
               onClick={logout}
-              className="bg-purple-700 hover:bg-purple-800 px-4 py-2 rounded-lg transition-colors"
+              className="bg-purple-700 hover:bg-purple-800 px-3 sm:px-4 py-2 rounded-lg transition-colors text-sm"
             >
               Logout
             </button>
           </div>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="border-t border-purple-500">
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="flex space-x-8">
+        {/* Tab Navigation - Scrollable on mobile */}
+        <div className="border-t border-purple-500 overflow-x-auto">
+          <div className="px-4 sm:px-6">
+            <div className="flex space-x-4 sm:space-x-8 min-w-max">
               {tabs.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className={`py-4 px-2 text-sm font-medium border-b-2 transition-colors ${
-                    tab === t.id
-                      ? 'border-white text-white'
-                      : 'border-transparent text-purple-200 hover:text-white hover:border-purple-300'
-                  }`}
+                  className={`py-3 sm:py-4 px-2 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${tab === t.id
+                    ? 'border-white text-white'
+                    : 'border-transparent text-purple-200 hover:text-white hover:border-purple-300'
+                    }`}
                 >
                   {t.label}
                 </button>
@@ -64,7 +63,7 @@ const AdminPage = () => {
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="p-4 sm:p-6">
         {/* Tab Content */}
         {tab === 'home' && <AdminAnalytics />}
         {tab === 'students' && <StudentManagement />}
