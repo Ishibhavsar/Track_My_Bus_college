@@ -10,9 +10,26 @@ dotenv.config();
 
 const app = express();
 
-// Middleware
+// Middleware - CORS configured for web and Capacitor Android apps
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'http://localhost:5173',         // Vite dev server
+  'http://localhost:5000',         // Backend dev
+  'capacitor://localhost',         // Capacitor Android
+  'https://localhost',             // Capacitor Android HTTPS scheme
+  'http://localhost',              // Capacitor local
+].filter(Boolean);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL,
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    // Allow any origin in development/for mobile apps
+    return callback(null, true);
+  },
   credentials: true,
 }));
 app.use(express.json());
@@ -20,7 +37,14 @@ app.use(express.urlencoded({ extended: true }));
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: process.env.FRONTEND_URL, methods: ['GET', 'POST'] },
+  cors: {
+    origin: function (origin, callback) {
+      // Allow requests with no origin (mobile apps) or any origin
+      callback(null, true);
+    },
+    methods: ['GET', 'POST'],
+    credentials: true
+  },
 });
 
 io.on('connection', (socket) => {
